@@ -1,5 +1,7 @@
 # Overview
 
+![CacheSafety Bench cover](assets/cache-safety-bench-cover.png)
+
 CacheSafety Bench evaluates whether an old LLM response can be safely reused for a new request.
 
 ## What problem it addresses
@@ -35,4 +37,3 @@ Many cache discussions stop at hit rate. That is not enough for LLM APIs. Two pr
 ## Positioning
 
 Benchmarking comes before productization. The first question is not “how many hits can we get?” The first question is “which hits remain invisible to the user, and which ones turn into bad hits?”
-

@@ -2,6 +2,8 @@
 
 > A benchmark for safe LLM response reuse.
 
+![CacheSafety Bench cover](docs/assets/cache-safety-bench-cover.png)
+
 Most cache benchmarks optimize hit rate. CacheSafety Bench measures Safe Hit Rate, Bad Hit Rate, and Cost Saved.
 
 ```bash
