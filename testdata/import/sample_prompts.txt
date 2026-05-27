@@ -1,0 +1,36 @@
+What is a REST API in simple terms?
+How do I organize meeting notes clearly?
+Rewrite this sentence to sound more polished: Please send the update soon.
+Translate this into Chinese: Your order has shipped.
+How can I reset my account password?
+What is the latest stock outlook today?
+Explain what idempotency means in software.
+How should I prepare a product demo?
+Polish this paragraph so it sounds more concise.
+Translate this sentence into natural English: 请稍后再试。
+How do I cancel my subscription?
+Explain cosine similarity for text matching.
+How can I write a thoughtful thank-you email?
+Rewrite this message so it sounds more friendly.
+Translate this sentence into Chinese: The document is ready for review.
+What is a webhook?
+How do I create a weekly study plan?
+Polish this announcement for a customer email.
+Translate this into English: 我们会尽快回复你。
+How do I export account data?
+Explain prompt caching in product terms.
+How should I run a code review?
+Rewrite this sentence in active voice: The report was reviewed by the team.
+Translate this sentence into Chinese: Please confirm your email address.
+What is JWT in everyday language?
+How do I draft a short project status update?
+Polish this internal note so it sounds more direct.
+Translate this into English: 会议已移至主会议室。
+How do I contact support for my account?
+Explain rate limiting for an API.
+How do I outline a launch checklist?
+Rewrite this paragraph into key takeaways.
+Translate this sentence into Chinese: The settings were updated successfully.
+What is the legal deadline for a refund claim?
+How do I update the email on my account?
+Explain what a webhook does for beginners.

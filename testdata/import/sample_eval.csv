@@ -1,0 +1,4 @@
+id,prompt,answer,category,expected_risk,old_request,old_answer,new_request,estimated_upstream_cost
+csv-001,Explain what a REST API is.,A REST API lets software systems exchange data through standard web requests.,general_explanation,low,,,,1
+csv-002,,,rewrite_polish,low,Summarize this paragraph as key points: The rollout improves search and support.,Key points include better search and faster support.,Turn this paragraph into key takeaways: The rollout improves search and support.,1
+csv-003,How do I reset my password?,"Open account settings, choose security, and follow the reset flow.",faq_generalization,low,,,,1

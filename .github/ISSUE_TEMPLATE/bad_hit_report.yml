@@ -1,0 +1,26 @@
+name: Bad hit report
+description: Report an unsafe reuse case with a toy or synthetic reproduction.
+title: "[Bad Hit]: "
+labels:
+  - bad-hit
+body:
+  - type: textarea
+    id: pair
+    attributes:
+      label: Toy reproduction pair
+      description: Include old_request, old_answer, new_request, and fresh_answer.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Why this is unsafe
+      description: Explain the mismatch or violated constraint.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report JSON
+      description: Paste the generated report snippet if available.
+

@@ -1,0 +1,10 @@
+strategy: exact+canonical
+semantic_threshold: 0.95
+max_prompt_chars_for_semantic: 512
+refuse_domains:
+  - medical
+  - legal
+  - financial
+output_formats:
+  - json
+  - html

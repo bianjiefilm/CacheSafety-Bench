@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest an improvement to the public benchmark.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What benchmark gap are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Keep proposals concrete and endpoint-neutral.
+

@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Go vet
+        run: go vet ./...
+      - name: Go test
+        run: go test ./...
+      - name: Go test -race
+        run: go test -race ./...
+      - name: Smoke benchmark
+        run: |
+          go run ./cmd/cachesafetybench run \
+            --dataset examples/support_pairs.jsonl \
+            --config configs/default.yaml \
+            --output reports/ci-report.json
+

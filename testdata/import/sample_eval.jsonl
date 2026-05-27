@@ -1,0 +1,4 @@
+{"id":"jsonl-001","prompt":"What is prompt caching?","answer":"Prompt caching reuses prior prompt work to avoid repeated processing.","estimated_upstream_cost":1}
+{"id":"jsonl-002","old_request":"Explain prompt caching in simple product terms.","old_answer":"Prompt caching reuses prior prompt work to reduce repeated processing.","new_request":"Describe prompt caching for a product manager.","answer":"Prompt caching reuses prior prompt work so repeated requests can be cheaper and faster.","category":"general_explanation","expected_risk":"low","estimated_upstream_cost":1}
+{"id":"jsonl-003","prompt":"Translate this into Chinese: Your order has shipped.","category":"loose_translation","expected_risk":"low","estimated_upstream_cost":1}
+{"id":"jsonl-004","messages":[{"role":"user","content":"How do I cancel my subscription?"}],"answer":"Open billing settings, find the subscription section, and choose cancel.","estimated_upstream_cost":1}

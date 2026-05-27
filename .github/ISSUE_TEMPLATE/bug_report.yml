@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible bug in the benchmark, docs, or toy fixtures.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction
+      description: Include commands, config, and dataset details.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report JSON
+      description: Paste the generated report JSON if available.
+
