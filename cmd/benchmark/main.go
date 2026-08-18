@@ -28,8 +28,9 @@ func main() {
 	topKTrace := flag.Int("top-k-trace", 0, "record semantic topK candidates in decision log; 0 disables")
 	thresholdScan := flag.String("threshold-scan", "", "comma-separated semantic thresholds to scan, for example 0.95,0.90,0.85")
 	shuffle := flag.Bool("shuffle", false, "shuffle cases deterministically")
-	providerName := flag.String("provider", "fake", "fresh-answer provider: fake or volcengine")
-	model := flag.String("model", "", "model id for provider=volcengine; defaults to VOLCENGINE_MODEL_1")
+	providerName := flag.String("provider", "fake", "fresh-answer provider: fake, volcengine, or openai")
+	model := flag.String("model", "", "model id for provider=volcengine or provider=openai")
+	observe := flag.Bool("observe", false, "score cache layers from gateway serve-mode headers instead of the in-process pipeline")
 	maxSamples := flag.Int("max-samples", 0, "maximum number of dataset rows to run; 0 means all")
 	startIndex := flag.Int("start-index", 0, "zero-based inclusive dataset start index for chunked runs")
 	endIndex := flag.Int("end-index", 0, "zero-based exclusive dataset end index for chunked runs; 0 means dataset end")
@@ -79,6 +80,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *observe {
+		if strings.TrimSpace(*providerName) == "" || strings.EqualFold(strings.TrimSpace(*providerName), "fake") {
+			*providerName = "openai"
+		}
+		if !strings.EqualFold(strings.TrimSpace(*providerName), "openai") {
+			fmt.Fprintf(os.Stderr, "observe requires provider=openai\n")
+			os.Exit(1)
+		}
+	}
 	fresh, err := freshAnswerFunc(*providerName, *model)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "configure provider: %v\n", err)
@@ -127,6 +137,7 @@ func main() {
 		SQLitePath:        *sqlitePath,
 		Dataset:           *dataset,
 		Pricing:           pricing,
+		CacheSource:       cacheSource(*observe),
 	}
 	startedAt := time.Now().UTC()
 	selectedRunID := strings.TrimSpace(*runID)
@@ -423,10 +434,66 @@ func judgeFunc(judgeName string, model string) (teacher.Judge, string, error) {
 	}
 }
 
+func cacheSource(observe bool) string {
+	if observe {
+		return "observed"
+	}
+	return ""
+}
+
+func providerToCacheResponse(item benchmark.Case, result provider.Result) cachepkg.Response {
+	return cachepkg.Response{
+		Text:             result.Response.Content,
+		TeacherScore:     item.TeacherScore,
+		PromptTokens:     result.Usage.PromptTokens,
+		CompletionTokens: result.Usage.CompletionTokens,
+		TotalTokens:      result.Usage.TotalTokens,
+		CostUSD:          result.Cost,
+		LatencyMS:        result.Response.LatencyMS,
+		Observation:      result.Observation,
+	}
+}
+
+func openaiFreshAnswer(model string) (benchmark.FreshAnswerFunc, error) {
+	cfg := provider.LoadOpenAIConfigFromEnv()
+	selectedModel := strings.TrimSpace(model)
+	if selectedModel == "" {
+		selectedModel = cfg.Model
+	}
+	if selectedModel == "" {
+		return nil, fmt.Errorf("provider=openai requires -model or OPENAI_MODEL")
+	}
+	client, err := provider.NewOpenAIProvider(cfg, nil)
+	if err != nil {
+		return nil, err
+	}
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	return func(ctx context.Context, item benchmark.Case) (cachepkg.Response, error) {
+		req := item.Request
+		req.Model = selectedModel
+		if req.MaxTokens == nil {
+			maxTokens := 64
+			req.MaxTokens = &maxTokens
+		}
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		result, err := client.Complete(ctx, req)
+		if err != nil {
+			return cachepkg.Response{}, err
+		}
+		return providerToCacheResponse(item, result), nil
+	}, nil
+}
+
 func freshAnswerFunc(providerName string, model string) (benchmark.FreshAnswerFunc, error) {
 	switch strings.ToLower(strings.TrimSpace(providerName)) {
 	case "", "fake":
 		return nil, nil
+	case "openai":
+		return openaiFreshAnswer(model)
 	case "volcengine":
 		cfg := provider.LoadVolcengineConfigFromEnv()
 		selectedModel := strings.TrimSpace(model)
@@ -453,15 +520,7 @@ func freshAnswerFunc(providerName string, model string) (benchmark.FreshAnswerFu
 			if err != nil {
 				return cachepkg.Response{}, err
 			}
-			return cachepkg.Response{
-				Text:             result.Response.Content,
-				TeacherScore:     item.TeacherScore,
-				PromptTokens:     result.Usage.PromptTokens,
-				CompletionTokens: result.Usage.CompletionTokens,
-				TotalTokens:      result.Usage.TotalTokens,
-				CostUSD:          result.Cost,
-				LatencyMS:        result.Response.LatencyMS,
-			}, nil
+			return providerToCacheResponse(item, result), nil
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", providerName)

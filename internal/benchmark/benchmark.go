@@ -47,6 +47,7 @@ type Config struct {
 	SQLitePath        string        `json:"sqlite_path,omitempty"`
 	Dataset           string        `json:"dataset,omitempty"`
 	Pricing           PricingConfig `json:"-"`
+	CacheSource       string        `json:"cache_source,omitempty"`
 }
 
 type Case struct {
@@ -141,6 +142,7 @@ type Metrics struct {
 	StrataCount                 int                       `json:"strata_count,omitempty"`
 	SampledByStratum            map[string]int            `json:"sampled_by_stratum,omitempty"`
 	BadHits                     []BadHitSample            `json:"bad_hits,omitempty"`
+	CacheSource                 string                    `json:"cache_source,omitempty"`
 	JudgeRecords                []teacher.Record          `json:"-"`
 	DecisionRecords             []DecisionRecord          `json:"-"`
 }
@@ -266,45 +268,54 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 		})
 	}
 
+	observing := observesGateway(cfg)
+	if observing {
+		cfg.CacheSource = "observed"
+	}
+
 	byPrompt := map[string]Case{}
 	for _, item := range ordered {
 		byPrompt[cachepkg.PromptText(item.Request)] = item
 	}
-	vectorIndex, err := buildVectorIndex(ctx, ordered, cfg, embedder, vectorStoreMode, progress)
-	if err != nil {
-		return Metrics{}, err
-	}
-	defer func() { _ = vectorIndex.close() }()
+	var vectorIndex vectorIndex
+	var pipeline *cachepkg.Pipeline
+	if !observing {
+		vectorIndex, err = buildVectorIndex(ctx, ordered, cfg, embedder, vectorStoreMode, progress)
+		if err != nil {
+			return Metrics{}, err
+		}
+		defer func() { _ = vectorIndex.close() }()
 
-	pipelineConfig := cachepkg.PipelineConfig{
-		SemanticThreshold: cfg.SemanticThreshold,
-		Similarity: func(a cachepkg.Request, b cachepkg.Request) float64 {
-			if vectorIndex.enabled {
-				left, okLeft := vectorIndex.vectors[cachepkg.PromptText(a)]
-				right, okRight := vectorIndex.vectors[cachepkg.PromptText(b)]
-				if !okLeft || !okRight {
-					return 0
+		pipelineConfig := cachepkg.PipelineConfig{
+			SemanticThreshold: cfg.SemanticThreshold,
+			Similarity: func(a cachepkg.Request, b cachepkg.Request) float64 {
+				if vectorIndex.enabled {
+					left, okLeft := vectorIndex.vectors[cachepkg.PromptText(a)]
+					right, okRight := vectorIndex.vectors[cachepkg.PromptText(b)]
+					if !okLeft || !okRight {
+						return 0
+					}
+					return cachepkg.CosineSimilarity(left, right)
 				}
-				return cachepkg.CosineSimilarity(left, right)
-			}
-			left := byPrompt[cachepkg.PromptText(a)]
-			right := byPrompt[cachepkg.PromptText(b)]
-			if left.SemanticGroup != "" && left.SemanticGroup == right.SemanticGroup {
-				if left.SemanticSimilarity > 0 {
-					return left.SemanticSimilarity
+				left := byPrompt[cachepkg.PromptText(a)]
+				right := byPrompt[cachepkg.PromptText(b)]
+				if left.SemanticGroup != "" && left.SemanticGroup == right.SemanticGroup {
+					if left.SemanticSimilarity > 0 {
+						return left.SemanticSimilarity
+					}
+					if right.SemanticSimilarity > 0 {
+						return right.SemanticSimilarity
+					}
 				}
-				if right.SemanticSimilarity > 0 {
-					return right.SemanticSimilarity
-				}
-			}
-			return 0
-		},
-		Safety: safety.DefaultChecker(),
+				return 0
+			},
+			Safety: safety.DefaultChecker(),
+		}
+		if vectorIndex.store != nil {
+			pipelineConfig.SemanticCandidate = vectorIndex.semanticCandidateFunc(cfg)
+		}
+		pipeline = cachepkg.NewPipeline(pipelineConfig)
 	}
-	if vectorIndex.store != nil {
-		pipelineConfig.SemanticCandidate = vectorIndex.semanticCandidateFunc(cfg)
-	}
-	pipeline := cachepkg.NewPipeline(pipelineConfig)
 
 	metrics := Metrics{
 		Threshold: cfg.SemanticThreshold,
@@ -328,6 +339,7 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 		StratifyBy:       append([]string(nil), sampling.StratifyBy...),
 		StrataCount:      sampling.StrataCount,
 		SampledByStratum: sampling.SampledByStratum,
+		CacheSource:      cfg.CacheSource,
 	}
 	var safeHits, badHits, cachedGEFreshMinus1 int
 	var totalCost float64
@@ -335,20 +347,22 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 	responsesByPrompt := map[string]cachepkg.Response{}
 	seededReplayEntries := map[string]bool{}
 
-	for _, item := range ordered {
-		seedReq, seedResp, ok := replaySeed(item)
-		if !ok {
-			continue
+	if pipeline != nil {
+		for _, item := range ordered {
+			seedReq, seedResp, ok := replaySeed(item)
+			if !ok {
+				continue
+			}
+			key := cachepkg.PromptText(seedReq) + "\n" + seedResp.Text
+			if seededReplayEntries[key] {
+				continue
+			}
+			pipeline.Put(seedReq, seedResp)
+			if err := vectorIndex.insertSeed(ctx, seedReq, seedResp, item); err != nil {
+				return Metrics{}, err
+			}
+			seededReplayEntries[key] = true
 		}
-		key := cachepkg.PromptText(seedReq) + "\n" + seedResp.Text
-		if seededReplayEntries[key] {
-			continue
-		}
-		pipeline.Put(seedReq, seedResp)
-		if err := vectorIndex.insertSeed(ctx, seedReq, seedResp, item); err != nil {
-			return Metrics{}, err
-		}
-		seededReplayEntries[key] = true
 	}
 
 	for _, item := range ordered {
@@ -359,12 +373,19 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 			sampleCtx, cancelSample = context.WithTimeout(ctx, cfg.TimeoutPerSample)
 		}
 		cacheSearchStarted := time.Now()
-		result, err := pipeline.Handle(sampleCtx, item.Request, func(callCtx context.Context, req cachepkg.Request) (cachepkg.Response, error) {
+		var result cachepkg.LookupResult
+		if observing {
 			providerStarted := time.Now()
-			resp, providerErr := fresh(callCtx, current)
-			progress.Log(current, ProgressStageProvider, time.Since(providerStarted), providerErr)
-			return resp, providerErr
-		})
+			result, err = observeGateway(sampleCtx, current, fresh)
+			progress.Log(current, ProgressStageProvider, time.Since(providerStarted), err)
+		} else {
+			result, err = pipeline.Handle(sampleCtx, item.Request, func(callCtx context.Context, req cachepkg.Request) (cachepkg.Response, error) {
+				providerStarted := time.Now()
+				resp, providerErr := fresh(callCtx, current)
+				progress.Log(current, ProgressStageProvider, time.Since(providerStarted), providerErr)
+				return resp, providerErr
+			})
+		}
 		progress.Log(item, ProgressStageCacheSearch, time.Since(cacheSearchStarted), err)
 		if err != nil {
 			if isTimeoutError(err, sampleCtx) {
@@ -415,7 +436,9 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 			totalCost += item.FreshCost
 			cost := BuildTokenCostAccount(item, result, hitEvaluation{}, cfg.Pricing, false, embeddingMode)
 			applyTokenCost(&metrics, &categoryMetric, cost)
-			pipeline.Put(item.Request, result.Response)
+			if pipeline != nil {
+				pipeline.Put(item.Request, result.Response)
+			}
 			if err := vectorIndex.insert(ctx, item, result.Response); err != nil {
 				cancelSample()
 				return Metrics{}, err
@@ -429,6 +452,7 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 				VectorStore:   vectorStoreMode,
 				EmbeddingMode: embeddingMode,
 				JudgeMode:     judgeMode,
+				CacheSource:   cfg.CacheSource,
 				Cost:          cost,
 			}))
 			metrics.CategoryMetrics[category] = categoryMetric
@@ -463,6 +487,7 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 				VectorStore:   vectorStoreMode,
 				EmbeddingMode: embeddingMode,
 				JudgeMode:     judgeMode,
+				CacheSource:   cfg.CacheSource,
 				Cost:          cost,
 			}))
 			metrics.CategoryMetrics[category] = categoryMetric
@@ -498,6 +523,7 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 				VectorStore:   vectorStoreMode,
 				EmbeddingMode: embeddingMode,
 				JudgeMode:     judgeMode,
+				CacheSource:   cfg.CacheSource,
 				SafeCostSaved: saved,
 				Cost:          cost,
 			}))
@@ -522,6 +548,7 @@ func RunWithEmbedding(ctx context.Context, cases []Case, cfg Config, fresh Fresh
 			VectorStore:   vectorStoreMode,
 			EmbeddingMode: embeddingMode,
 			JudgeMode:     judgeMode,
+			CacheSource:   cfg.CacheSource,
 			BadHit:        true,
 			Cost:          cost,
 		}))
@@ -1020,6 +1047,28 @@ func maxInt(left int, right int) int {
 		return left
 	}
 	return right
+}
+
+func observesGateway(cfg Config) bool {
+	return strings.EqualFold(strings.TrimSpace(cfg.CacheSource), "observed")
+}
+
+func observeGateway(ctx context.Context, item Case, fresh FreshAnswerFunc) (cachepkg.LookupResult, error) {
+	resp, err := fresh(ctx, item)
+	if err != nil {
+		return cachepkg.LookupResult{Layer: cachepkg.LayerMiss, Response: resp, UpstreamCalled: true}, err
+	}
+	layer := cachepkg.LayerFromServeMode(resp.Observation.ServeMode)
+	cachedPrompt := strings.TrimSpace(item.OldRequest)
+	if cachedPrompt == "" {
+		cachedPrompt = cachepkg.PromptText(item.Request)
+	}
+	return cachepkg.LookupResult{
+		Layer:          layer,
+		Response:       resp,
+		CachedPrompt:   cachedPrompt,
+		UpstreamCalled: !cachepkg.IsObservedCacheHit(resp.Observation.ServeMode),
+	}, nil
 }
 
 func fixtureFreshAnswer(ctx context.Context, item Case) (cachepkg.Response, error) {

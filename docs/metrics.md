@@ -55,6 +55,7 @@
 - Why it matters: it shows where safe savings actually come from.
 - Failure mode: a semantic layer may add complexity without meaningful safe contribution.
 - Example JSON field: `cache_layer_contribution`
+- Observed gateway runs may also report `ln_beta` when `x-nextmodel-serve-mode` is `ln_beta`. That is the gateway's named layer, not a remapped `semantic` count.
 
 ## Judge Delta
 

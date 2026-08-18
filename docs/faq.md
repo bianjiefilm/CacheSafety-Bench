@@ -24,6 +24,8 @@ Yes, if your workflow is OpenAI-compatible.
 
 Yes. NextModel is an optional hosted endpoint example, not a requirement.
 
+Local runs simulate cache in-process. To score what a NextModel-shaped gateway actually served, set `OPENAI_API_KEY` / `OPENAI_BASE_URL` and pass `-observe`. See [nextmodel-integration.md](nextmodel-integration.md).
+
 ## Does this store my prompts?
 
 The public repo ships only toy examples. You should review your own local datasets and reports before sharing them.

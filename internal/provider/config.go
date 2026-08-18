@@ -8,6 +8,9 @@ import (
 )
 
 const (
+	EnvOpenAIAPIKey             = "OPENAI_API_KEY"
+	EnvOpenAIBaseURL            = "OPENAI_BASE_URL"
+	EnvOpenAIModel              = "OPENAI_MODEL"
 	EnvVolcengineAPIKey         = "VOLCENGINE_API_KEY"
 	EnvVolcengineBaseURL        = "VOLCENGINE_BASE_URL"
 	EnvVolcengineModel1         = "VOLCENGINE_MODEL_1"
@@ -15,7 +18,32 @@ const (
 	EnvVolcengineModel3         = "VOLCENGINE_MODEL_3"
 	EnvVolcengineModel4         = "VOLCENGINE_MODEL_4"
 	EnvRunVolcengineIntegration = "RUN_VOLCENGINE_INTEGRATION"
+	DefaultOpenAIBaseURL        = "https://api.openai.com/v1"
 )
+
+type OpenAIConfig struct {
+	APIKey         string
+	BaseURL        string
+	Model          string
+	Timeout        time.Duration
+	RedactedAPIKey string
+}
+
+func LoadOpenAIConfigFromEnv() OpenAIConfig {
+	apiKey := strings.TrimSpace(os.Getenv(EnvOpenAIAPIKey))
+	baseURL := strings.TrimSpace(os.Getenv(EnvOpenAIBaseURL))
+	if baseURL == "" {
+		baseURL = DefaultOpenAIBaseURL
+	}
+	timeoutSeconds := getenvInt("OPENAI_TIMEOUT_SECONDS", 60)
+	return OpenAIConfig{
+		APIKey:         apiKey,
+		BaseURL:        baseURL,
+		Model:          strings.TrimSpace(os.Getenv(EnvOpenAIModel)),
+		Timeout:        time.Duration(timeoutSeconds) * time.Second,
+		RedactedAPIKey: redactSecret(apiKey),
+	}
+}
 
 type VolcengineConfig struct {
 	APIKey         string

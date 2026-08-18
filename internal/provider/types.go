@@ -29,9 +29,10 @@ type Provider interface {
 }
 
 type Result struct {
-	Response Response `json:"response"`
-	Usage    Usage    `json:"usage"`
-	Cost     float64  `json:"cost_usd"`
+	Response    Response             `json:"response"`
+	Usage       Usage                `json:"usage"`
+	Cost        float64              `json:"cost_usd"`
+	Observation cachepkg.Observation `json:"observation,omitempty"`
 }
 
 type FakeProvider struct {

@@ -21,9 +21,17 @@ export OPENAI_BASE_URL=https://api.openai.com/v1
 ```bash
 export OPENAI_API_KEY=...
 export OPENAI_BASE_URL=https://api.nextmodel.app/v1
+export OPENAI_MODEL=your-model-id
 ```
 
-CacheSafety Bench is endpoint-neutral. NextModel is an optional hosted endpoint example, not a requirement.
+```bash
+go run ./cmd/benchmark \
+  -dataset testdata/benchmark/synthetic_v0.jsonl \
+  -observe \
+  -model "$OPENAI_MODEL"
+```
+
+Local toy runs still simulate cache in-process. `-observe` is optional: it scores the gateway's `x-nextmodel-serve-mode` instead of the local pipeline. CacheSafety Bench is endpoint-neutral. NextModel is an optional hosted endpoint example, not a requirement.
 
 ## What is CacheSafety Bench?
 
@@ -109,6 +117,8 @@ See [docs/report-format.md](docs/report-format.md).
 CacheSafety Bench is open source and works with any OpenAI-compatible endpoint.
 
 NextModel can be used as an optional hosted endpoint or production gateway example. It is not required for local benchmark runs.
+
+To score what a live NextModel-shaped gateway actually served, point `OPENAI_BASE_URL` at the gateway and pass `-observe` (or `cachesafetybench run --observe`). That path records serve-mode and receipt headers. It does not replace the default in-process cache simulation.
 
 See [docs/nextmodel-integration.md](docs/nextmodel-integration.md).
 

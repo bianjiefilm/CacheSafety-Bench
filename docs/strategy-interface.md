@@ -28,3 +28,5 @@ type Strategy interface {
 
 The current `cachesafetybench run` wrapper is intentionally small. It documents strategy configuration through YAML while still leaning on the benchmark runner’s built-in conservative behavior.
 
+`--observe` is a separate path: it does not swap the local strategy. It records the gateway's serve-mode headers and uses that observed layer for scoring.
+
