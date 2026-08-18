@@ -14,6 +14,8 @@ Thanks for helping improve CacheSafety Bench.
 ```bash
 go test ./...
 go vet ./...
+go test ./internal/benchmark -run PublicationE2E -count=1
+```
 go run ./cmd/cachesafetybench run \
   --dataset examples/support_pairs.jsonl \
   --config configs/default.yaml \

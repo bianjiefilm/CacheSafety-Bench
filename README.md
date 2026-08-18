@@ -21,9 +21,17 @@ export OPENAI_BASE_URL=https://api.openai.com/v1
 ```bash
 export OPENAI_API_KEY=...
 export OPENAI_BASE_URL=https://api.nextmodel.app/v1
+export OPENAI_MODEL=your-model-id
 ```
 
-CacheSafety Bench is endpoint-neutral. NextModel is an optional hosted endpoint example, not a requirement.
+```bash
+go run ./cmd/benchmark \
+  -dataset testdata/benchmark/synthetic_v0.jsonl \
+  -observe \
+  -model "$OPENAI_MODEL"
+```
+
+Local toy runs still simulate cache in-process (`-scorecard lab`, the default). `-observe` scores the gateway's `x-nextmodel-serve-mode` instead of the local pipeline. `-scorecard publication` uses promptset v3 and the NextModel hosted bench formula; it requires `-observe` and does not replace the lab runner. CacheSafety Bench is endpoint-neutral. NextModel is an optional hosted endpoint example, not a requirement.
 
 ## What is CacheSafety Bench?
 
@@ -57,7 +65,7 @@ CacheSafety Bench follows five principles:
 - Semantic Trap Failure Rate
 - Cache Layer Contribution: exact / canonical / semantic
 
-See [docs/metrics.md](docs/metrics.md) for definitions and formulas.
+See [docs/metrics.md](docs/metrics.md) for lab vs publication definitions and formulas.
 
 ## Quick start
 
@@ -72,6 +80,24 @@ go run ./cmd/cachesafetybench run \
 ```
 
 The public wrapper reads the dataset and config, runs the benchmark locally, writes a JSON report, and writes an HTML report when requested.
+
+## Publication e2e loop
+
+A Go-only loop walks all 50 promptset v3 calls through observe + publication scoring against an in-process OpenAI-compatible httptest gateway. It does not call NextModel and does not need `OPENAI_API_KEY`.
+
+```bash
+go test ./internal/benchmark -run PublicationE2E -count=1
+```
+
+Repeat to check flakes:
+
+```bash
+make e2e-loop
+# or
+./scripts/e2e.sh 3
+```
+
+CI runs this as part of `go test ./...`.
 
 ## Dataset format
 
@@ -109,6 +135,8 @@ See [docs/report-format.md](docs/report-format.md).
 CacheSafety Bench is open source and works with any OpenAI-compatible endpoint.
 
 NextModel can be used as an optional hosted endpoint or production gateway example. It is not required for local benchmark runs.
+
+To score what a live NextModel-shaped gateway actually served, point `OPENAI_BASE_URL` at the gateway and pass `-observe`. Add `-scorecard publication` to emit the hosted-page scorecard on `examples/promptset_v3.json`. That path records serve-mode and receipt headers. It does not replace the default in-process cache simulation.
 
 See [docs/nextmodel-integration.md](docs/nextmodel-integration.md).
 

@@ -25,6 +25,11 @@ type DecisionRecord struct {
 	EmbeddingMode               string                           `json:"embedding_mode"`
 	Threshold                   float64                          `json:"threshold"`
 	CacheLayer                  string                           `json:"cache_layer"`
+	CacheSource                 string                           `json:"cache_source,omitempty"`
+	ObservedServeMode           string                           `json:"observed_serve_mode,omitempty"`
+	ObservedRequestID           string                           `json:"observed_request_id,omitempty"`
+	ObservedReceiptHash         string                           `json:"observed_receipt_hash,omitempty"`
+	ObservedReceiptURL          string                           `json:"observed_receipt_url,omitempty"`
 	RequestPreview              string                           `json:"request_preview,omitempty"`
 	SemanticCandidateFound      bool                             `json:"semantic_candidate_found"`
 	Similarity                  float64                          `json:"similarity,omitempty"`
@@ -209,6 +214,11 @@ func NewDecisionRecord(input DecisionInput) DecisionRecord {
 		EmbeddingMode:               input.EmbeddingMode,
 		Threshold:                   input.Threshold,
 		CacheLayer:                  string(input.Result.Layer),
+		CacheSource:                 input.CacheSource,
+		ObservedServeMode:           input.Result.Response.Observation.ServeMode,
+		ObservedRequestID:           input.Result.Response.Observation.RequestID,
+		ObservedReceiptHash:         input.Result.Response.Observation.ReceiptHash,
+		ObservedReceiptURL:          input.Result.Response.Observation.ReceiptURL,
 		RequestPreview:              Preview(cachepkg.PromptText(input.Item.Request), 200),
 		SemanticCandidateFound:      candidateFound,
 		Similarity:                  input.Result.Similarity,
@@ -273,6 +283,7 @@ type DecisionInput struct {
 	BadHit        bool
 	SafeCostSaved float64
 	Cost          TokenCostAccount
+	CacheSource   string
 }
 
 func Preview(value string, limit int) string {

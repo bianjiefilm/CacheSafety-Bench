@@ -30,4 +30,5 @@ The public wrapper emits a compact report shaped like:
 - JSON is the machine-readable source of truth.
 - `best_policy` is a recommendation, not a deployment command.
 - `semantic_cache_recommended` should remain conservative.
+- `cache_source` is omitted for local in-process simulation. Observed gateway runs set it to `observed` and may include `ln_beta`.
 

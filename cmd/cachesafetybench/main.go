@@ -15,6 +15,7 @@ import (
 	"github.com/bianjiefilm/CacheSafety-Bench/internal/benchmark"
 	cachepkg "github.com/bianjiefilm/CacheSafety-Bench/internal/cache"
 	"github.com/bianjiefilm/CacheSafety-Bench/internal/embedding"
+	"github.com/bianjiefilm/CacheSafety-Bench/internal/provider"
 	"github.com/bianjiefilm/CacheSafety-Bench/internal/teacher"
 	"gopkg.in/yaml.v3"
 )
@@ -32,6 +33,7 @@ type report struct {
 	Tagline                   string                    `json:"tagline"`
 	Dataset                   string                    `json:"dataset"`
 	Strategy                  string                    `json:"strategy"`
+	CacheSource               string                    `json:"cache_source,omitempty"`
 	TotalPairs                int                       `json:"total_pairs"`
 	SafeHitRate               float64                   `json:"safe_hit_rate"`
 	BadHitRate                float64                   `json:"bad_hit_rate"`
@@ -108,6 +110,10 @@ func printUsage() {
 
 Usage:
   cachesafetybench run --dataset examples/support_pairs.jsonl --config configs/default.yaml --output reports/example-report.html
+
+  cachesafetybench run --dataset examples/support_pairs.jsonl --observe --model your-model
+
+  cachesafetybench run --scorecard=publication --observe --model your-model --promptset examples/promptset_v3.json
 `)
 }
 
@@ -118,8 +124,21 @@ func run(args []string) error {
 	dataset := fs.String("dataset", "examples/support_pairs.jsonl", "JSONL dataset path")
 	configPath := fs.String("config", "configs/default.yaml", "YAML config path")
 	output := fs.String("output", "reports/example-report.html", "report output path (.json or .html)")
+	providerName := fs.String("provider", "fake", "fresh-answer provider: fake or openai")
+	model := fs.String("model", "", "model id for provider=openai; defaults to OPENAI_MODEL")
+	observe := fs.Bool("observe", false, "score cache layers from gateway serve-mode headers instead of the in-process pipeline")
+	scorecardName := fs.String("scorecard", "lab", "scorecard: lab (default) or publication")
+	promptsetPath := fs.String("promptset", benchmark.DefaultPromptSet, "publication promptset JSON path")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	scorecard, err := benchmark.NormalizeScorecard(*scorecardName)
+	if err != nil {
+		return err
+	}
+	if scorecard == benchmark.ScorecardPublication {
+		return runPublication(*promptsetPath, *providerName, *model, *observe, *output)
 	}
 
 	cfg, err := loadConfig(*configPath)
@@ -136,12 +155,20 @@ func run(args []string) error {
 	}
 
 	embedder := selectEmbedder(cfg)
+	fresh, cacheSource, err := publicFreshAnswer(*providerName, *model, *observe)
+	if err != nil {
+		return err
+	}
+	if cacheSource == "observed" {
+		embedder = nil
+	}
 	metrics, err := benchmark.RunWithEmbedding(context.Background(), cases, benchmark.Config{
 		SemanticThreshold: normalizedThreshold(cfg.SemanticThreshold),
 		EmbeddingMode:     embeddingModeName(embedder),
 		VectorStoreMode:   "memory",
 		Dataset:           *dataset,
-	}, nil, teacher.FakeJudge{}, embedder)
+		CacheSource:       cacheSource,
+	}, fresh, teacher.FakeJudge{}, embedder)
 	if err != nil {
 		return err
 	}
@@ -407,11 +434,21 @@ func buildReport(metrics benchmark.Metrics, cfg benchConfig, dataset string) rep
 		bestPolicy = "exact+canonical+semantic"
 	}
 
+	layerContribution := map[string]int{
+		"exact":     metrics.LayerContribution["exact"],
+		"canonical": metrics.LayerContribution["canonical"],
+		"semantic":  metrics.LayerContribution["semantic"],
+	}
+	if metrics.CacheSource == "observed" || metrics.LayerContribution["ln_beta"] > 0 {
+		layerContribution["ln_beta"] = metrics.LayerContribution["ln_beta"]
+	}
+
 	return report{
 		Name:                      "CacheSafety Bench",
 		Tagline:                   "A benchmark for safe LLM response reuse.",
 		Dataset:                   filepath.Base(dataset),
 		Strategy:                  cfg.Strategy,
+		CacheSource:               metrics.CacheSource,
 		TotalPairs:                metrics.Total,
 		SafeHitRate:               metrics.SafeHitRate,
 		BadHitRate:                metrics.BadHitRate,
@@ -419,17 +456,13 @@ func buildReport(metrics benchmark.Metrics, cfg benchConfig, dataset string) rep
 		CostSavedPer1KRequestsUSD: costSavedPer1K,
 		NetSavingRate:             metrics.NetSavingRate,
 		SemanticTrapFailureRate:   semanticTrapFailureRate,
-		CacheLayerContribution: map[string]int{
-			"exact":     metrics.LayerContribution["exact"],
-			"canonical": metrics.LayerContribution["canonical"],
-			"semantic":  metrics.LayerContribution["semantic"],
-		},
-		JudgeDelta:               judgeDelta,
-		RegressionEscapeRate:     0,
-		BestPolicy:               bestPolicy,
-		SemanticCacheRecommended: semanticRecommended,
-		BadHits:                  badHits,
-		Summary:                  summary,
+		CacheLayerContribution:    layerContribution,
+		JudgeDelta:                judgeDelta,
+		RegressionEscapeRate:      0,
+		BestPolicy:                bestPolicy,
+		SemanticCacheRecommended:  semanticRecommended,
+		BadHits:                   badHits,
+		Summary:                   summary,
 		Config: reportConfig{
 			MaxPromptCharsForSemantic: cfg.MaxPromptCharsForSemantic,
 			RefuseDomains:             append([]string(nil), cfg.RefuseDomains...),
@@ -481,7 +514,7 @@ func normalizedFormats(target string, formats []string) map[string]string {
 	return out
 }
 
-func writeJSON(path string, rep report) error {
+func writeJSON(path string, rep any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -530,7 +563,7 @@ func writeHTML(path string, rep report) error {
     <main>
       <span class="badge">{{.Tagline}}</span>
       <h1>{{.Name}}</h1>
-      <p>Dataset: <code>{{.Dataset}}</code> · Strategy: <code>{{.Strategy}}</code></p>
+      <p>Dataset: <code>{{.Dataset}}</code> · Strategy: <code>{{.Strategy}}</code>{{if .CacheSource}} · Cache source: <code>{{.CacheSource}}</code>{{end}}</p>
       <div class="grid">
         <section class="card"><span class="eyebrow">Total pairs</span><strong class="metric">{{.TotalPairs}}</strong></section>
         <section class="card"><span class="eyebrow">Safe Hit Rate</span><strong class="metric">{{printf "%.1f%%" (mul100 .SafeHitRate)}}</strong></section>
@@ -550,6 +583,7 @@ func writeHTML(path string, rep report) error {
           <tr><td>Exact</td><td>{{index .CacheLayerContribution "exact"}}</td></tr>
           <tr><td>Canonical</td><td>{{index .CacheLayerContribution "canonical"}}</td></tr>
           <tr><td>Semantic</td><td>{{index .CacheLayerContribution "semantic"}}</td></tr>
+          {{if eq .CacheSource "observed"}}<tr><td>LN beta</td><td>{{index .CacheLayerContribution "ln_beta"}}</td></tr>{{end}}
         </tbody>
       </table>
       <h2>Bad Hits</h2>
@@ -614,4 +648,94 @@ func firstNonEmpty(values ...string) string {
 
 func normalizePrompt(value string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+}
+
+func runPublication(promptsetPath, providerName, model string, observe bool, output string) error {
+	if !observe {
+		return fmt.Errorf("scorecard=publication requires --observe; refusing to score the lab pipeline as publication")
+	}
+	set, err := benchmark.LoadPromptSet(promptsetPath)
+	if err != nil {
+		return err
+	}
+	fresh, _, err := publicFreshAnswer(providerName, model, true)
+	if err != nil {
+		return err
+	}
+	score, _, err := benchmark.RunPublication(context.Background(), set, benchmark.Config{
+		Dataset:     promptsetPath,
+		CacheSource: "observed",
+	}, fresh)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(output) != "" {
+		jsonPath := output
+		if strings.EqualFold(filepath.Ext(output), ".html") {
+			jsonPath = strings.TrimSuffix(output, filepath.Ext(output)) + ".json"
+		}
+		if err := writeJSON(jsonPath, score); err != nil {
+			return err
+		}
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(score)
+}
+
+func publicFreshAnswer(providerName string, model string, observe bool) (benchmark.FreshAnswerFunc, string, error) {
+	name := strings.ToLower(strings.TrimSpace(providerName))
+	if observe {
+		if name == "" || name == "fake" {
+			name = "openai"
+		}
+		if name != "openai" {
+			return nil, "", fmt.Errorf("observe requires --provider openai")
+		}
+	}
+	switch name {
+	case "", "fake":
+		return nil, "", nil
+	case "openai":
+		cfg := provider.LoadOpenAIConfigFromEnv()
+		selectedModel := strings.TrimSpace(model)
+		if selectedModel == "" {
+			selectedModel = cfg.Model
+		}
+		if selectedModel == "" {
+			return nil, "", fmt.Errorf("provider=openai requires --model or OPENAI_MODEL")
+		}
+		client, err := provider.NewOpenAIProvider(cfg, nil)
+		if err != nil {
+			return nil, "", err
+		}
+		cacheSource := ""
+		if observe {
+			cacheSource = "observed"
+		}
+		return func(ctx context.Context, item benchmark.Case) (cachepkg.Response, error) {
+			req := item.Request
+			req.Model = selectedModel
+			if req.MaxTokens == nil {
+				maxTokens := 64
+				req.MaxTokens = &maxTokens
+			}
+			result, err := client.Complete(ctx, req)
+			if err != nil {
+				return cachepkg.Response{}, err
+			}
+			return cachepkg.Response{
+				Text:             result.Response.Content,
+				TeacherScore:     item.TeacherScore,
+				PromptTokens:     result.Usage.PromptTokens,
+				CompletionTokens: result.Usage.CompletionTokens,
+				TotalTokens:      result.Usage.TotalTokens,
+				CostUSD:          result.Cost,
+				LatencyMS:        result.Response.LatencyMS,
+				Observation:      result.Observation,
+			}, nil
+		}, cacheSource, nil
+	default:
+		return nil, "", fmt.Errorf("unsupported provider %q", providerName)
+	}
 }

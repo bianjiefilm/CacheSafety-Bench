@@ -31,17 +31,18 @@ type Request struct {
 }
 
 type Response struct {
-	Text                       string    `json:"text"`
-	TeacherScore               float64   `json:"teacher_score,omitempty"`
-	ExactServeQualityDecision  string    `json:"exact_serve_quality_decision,omitempty"`
-	ExactServeQualityCheckedAt string    `json:"exact_serve_quality_checked_at,omitempty"`
-	HitCount                   int       `json:"hit_count,omitempty"`
-	LastRefreshed              time.Time `json:"last_refreshed,omitempty"`
-	PromptTokens               int       `json:"prompt_tokens,omitempty"`
-	CompletionTokens           int       `json:"completion_tokens,omitempty"`
-	TotalTokens                int       `json:"total_tokens,omitempty"`
-	CostUSD                    float64   `json:"cost_usd,omitempty"`
-	LatencyMS                  int64     `json:"latency_ms,omitempty"`
+	Text                       string      `json:"text"`
+	TeacherScore               float64     `json:"teacher_score,omitempty"`
+	ExactServeQualityDecision  string      `json:"exact_serve_quality_decision,omitempty"`
+	ExactServeQualityCheckedAt string      `json:"exact_serve_quality_checked_at,omitempty"`
+	HitCount                   int         `json:"hit_count,omitempty"`
+	LastRefreshed              time.Time   `json:"last_refreshed,omitempty"`
+	PromptTokens               int         `json:"prompt_tokens,omitempty"`
+	CompletionTokens           int         `json:"completion_tokens,omitempty"`
+	TotalTokens                int         `json:"total_tokens,omitempty"`
+	CostUSD                    float64     `json:"cost_usd,omitempty"`
+	LatencyMS                  int64       `json:"latency_ms,omitempty"`
+	Observation                Observation `json:"observation,omitempty"`
 }
 
 func PromptText(req Request) string {
