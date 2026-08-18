@@ -114,6 +114,12 @@ go run ./cmd/cachesafetybench run \
 
 `-scorecard publication` requires `-observe`. It will not score the local lab pipeline as publication. NextModel remains optional: any gateway that returns the serve-mode headers can be measured. See [metrics.md](metrics.md) for the formula.
 
+To re-run the full 50-call publication path without live keys or Node:
+
+```bash
+go test ./internal/benchmark -run PublicationE2E -count=1
+```
+
 ## What observation is not
 
 - It is not a rewrite of the local exact / canonical / semantic pipeline.

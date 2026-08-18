@@ -81,6 +81,24 @@ go run ./cmd/cachesafetybench run \
 
 The public wrapper reads the dataset and config, runs the benchmark locally, writes a JSON report, and writes an HTML report when requested.
 
+## Publication e2e loop
+
+A Go-only loop walks all 50 promptset v3 calls through observe + publication scoring against an in-process OpenAI-compatible httptest gateway. It does not call NextModel and does not need `OPENAI_API_KEY`.
+
+```bash
+go test ./internal/benchmark -run PublicationE2E -count=1
+```
+
+Repeat to check flakes:
+
+```bash
+make e2e-loop
+# or
+./scripts/e2e.sh 3
+```
+
+CI runs this as part of `go test ./...`.
+
 ## Dataset format
 
 Datasets are JSONL files built around `old_request`, `old_answer`, and `new_request`, with optional `fresh_answer` for offline reference evaluation.
