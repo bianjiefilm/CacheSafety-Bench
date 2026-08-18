@@ -1,9 +1,31 @@
 # Metrics
 
+## Scorecards
+
+CacheSafety Bench has two scorecards. They share field names on purpose; the denominators are different.
+
+### Lab (default)
+
+The in-process runner. Safe / bad rates use the **total sample count**. FakeJudge and the local exact → canonical → semantic pipeline stay here.
+
+### Publication
+
+The NextModel hosted bench page formula. Use `-scorecard publication` with `-observe`. It never silently scores the lab pipeline.
+
+- Promptset: `examples/promptset_v3.json` (10 trap pairs, 10 repeat pairs, 10 fresh questions; 50 calls).
+- First calls are recorded but do not enter SH / BH / trap denominators.
+- Hit: serve-mode `exact_cache`, `canonical_cache`, or `ln_beta` (case-sensitive as served), or mapped layers `exact` / `canonical` / `ln_beta`.
+- Correct: every `expectKeywords` entry is a case-insensitive substring of the served content.
+- `safe_hit_rate` = count(repeat-second AND hit AND correct) / count(repeat-second)
+- `bad_hit_rate` = count(trap-second AND hit AND content contains all staleKeywords) / count(trap-second)
+- `semantic_trap_failure_rate` = count(fresh AND hit) / count(fresh)
+- Empty cohort rates are `null`, not `0.0`. Rates round to 4 decimal places.
+- `cost_saved_per_1k_requests` is a display field from cached-token usage and an optional input price. It is not lab billing or settlement.
+
 ## Safe Hit Rate
 
 - Definition: share of requests where a cached answer was reused and judged safe.
-- Formula: `safe_hits / total_requests`
+- Formula (lab): `safe_hits / total_requests`
 - Why it matters: this is the reuse metric that actually helps users and cost.
 - Failure mode: a high hit rate can hide unsafe reuse if safe hits are not separated from bad hits.
 - Example JSON field: `safe_hit_rate`

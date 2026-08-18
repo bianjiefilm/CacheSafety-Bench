@@ -40,7 +40,7 @@ func TestOpenAIProviderCapturesServeModeHeaders(t *testing.T) {
 			"id": "chatcmpl-1",
 			"model": "demo-model",
 			"choices": [{"message": {"role": "assistant", "content": "cached reply"}, "finish_reason": "stop"}],
-			"usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}
+			"usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6, "prompt_tokens_details": {"cached_tokens": 3}}
 		}`))
 	}))
 	defer server.Close()
@@ -63,11 +63,15 @@ func TestOpenAIProviderCapturesServeModeHeaders(t *testing.T) {
 	require.Equal(t, "demo-model", gotBody["model"])
 	require.Equal(t, "cached reply", result.Response.Content)
 	require.Equal(t, 4, result.Usage.PromptTokens)
+	promptTokens := 4
+	cachedTokens := 3
 	require.Equal(t, cachepkg.Observation{
-		ServeMode:   "canonical_cache",
-		RequestID:   "req-live-1",
-		ReceiptHash: "hash-live-1",
-		ReceiptURL:  "https://example.test/receipts/live-1",
+		ServeMode:    "canonical_cache",
+		RequestID:    "req-live-1",
+		ReceiptHash:  "hash-live-1",
+		ReceiptURL:   "https://example.test/receipts/live-1",
+		PromptTokens: &promptTokens,
+		CachedTokens: &cachedTokens,
 	}, result.Observation)
 
 	encoded, err := json.Marshal(result)

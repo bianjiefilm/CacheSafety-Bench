@@ -31,7 +31,7 @@ go run ./cmd/benchmark \
   -model "$OPENAI_MODEL"
 ```
 
-Local toy runs still simulate cache in-process. `-observe` is optional: it scores the gateway's `x-nextmodel-serve-mode` instead of the local pipeline. CacheSafety Bench is endpoint-neutral. NextModel is an optional hosted endpoint example, not a requirement.
+Local toy runs still simulate cache in-process (`-scorecard lab`, the default). `-observe` scores the gateway's `x-nextmodel-serve-mode` instead of the local pipeline. `-scorecard publication` uses promptset v3 and the NextModel hosted bench formula; it requires `-observe` and does not replace the lab runner. CacheSafety Bench is endpoint-neutral. NextModel is an optional hosted endpoint example, not a requirement.
 
 ## What is CacheSafety Bench?
 
@@ -65,7 +65,7 @@ CacheSafety Bench follows five principles:
 - Semantic Trap Failure Rate
 - Cache Layer Contribution: exact / canonical / semantic
 
-See [docs/metrics.md](docs/metrics.md) for definitions and formulas.
+See [docs/metrics.md](docs/metrics.md) for lab vs publication definitions and formulas.
 
 ## Quick start
 
@@ -118,7 +118,7 @@ CacheSafety Bench is open source and works with any OpenAI-compatible endpoint.
 
 NextModel can be used as an optional hosted endpoint or production gateway example. It is not required for local benchmark runs.
 
-To score what a live NextModel-shaped gateway actually served, point `OPENAI_BASE_URL` at the gateway and pass `-observe` (or `cachesafetybench run --observe`). That path records serve-mode and receipt headers. It does not replace the default in-process cache simulation.
+To score what a live NextModel-shaped gateway actually served, point `OPENAI_BASE_URL` at the gateway and pass `-observe`. Add `-scorecard publication` to emit the hosted-page scorecard on `examples/promptset_v3.json`. That path records serve-mode and receipt headers. It does not replace the default in-process cache simulation.
 
 See [docs/nextmodel-integration.md](docs/nextmodel-integration.md).
 

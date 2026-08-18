@@ -121,6 +121,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req cachepkg.Request) (Re
 	}
 	text, finishReason := extractOpenAICompletion(parsed)
 	observation := cachepkg.ParseGatewayHeaders(resp.Header)
+	attachUsageObservation(&observation, body)
 	normalized := Response{
 		Text:         text,
 		Content:      text,
@@ -176,6 +177,24 @@ func extractOpenAICompletion(resp openaiChatResponse) (string, string) {
 
 func joinURL(base, path string) string {
 	return strings.TrimRight(strings.TrimSpace(base), "/") + "/" + strings.TrimLeft(strings.TrimSpace(path), "/")
+}
+
+func attachUsageObservation(obs *cachepkg.Observation, body []byte) {
+	var envelope struct {
+		Usage struct {
+			PromptTokens        *int `json:"prompt_tokens"`
+			PromptTokensDetails *struct {
+				CachedTokens *int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return
+	}
+	obs.PromptTokens = envelope.Usage.PromptTokens
+	if envelope.Usage.PromptTokensDetails != nil {
+		obs.CachedTokens = envelope.Usage.PromptTokensDetails.CachedTokens
+	}
 }
 
 func firstNonEmpty(values ...string) string {

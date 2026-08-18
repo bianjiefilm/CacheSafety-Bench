@@ -112,6 +112,8 @@ Usage:
   cachesafetybench run --dataset examples/support_pairs.jsonl --config configs/default.yaml --output reports/example-report.html
 
   cachesafetybench run --dataset examples/support_pairs.jsonl --observe --model your-model
+
+  cachesafetybench run --scorecard=publication --observe --model your-model --promptset examples/promptset_v3.json
 `)
 }
 
@@ -125,8 +127,18 @@ func run(args []string) error {
 	providerName := fs.String("provider", "fake", "fresh-answer provider: fake or openai")
 	model := fs.String("model", "", "model id for provider=openai; defaults to OPENAI_MODEL")
 	observe := fs.Bool("observe", false, "score cache layers from gateway serve-mode headers instead of the in-process pipeline")
+	scorecardName := fs.String("scorecard", "lab", "scorecard: lab (default) or publication")
+	promptsetPath := fs.String("promptset", benchmark.DefaultPromptSet, "publication promptset JSON path")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	scorecard, err := benchmark.NormalizeScorecard(*scorecardName)
+	if err != nil {
+		return err
+	}
+	if scorecard == benchmark.ScorecardPublication {
+		return runPublication(*promptsetPath, *providerName, *model, *observe, *output)
 	}
 
 	cfg, err := loadConfig(*configPath)
@@ -502,7 +514,7 @@ func normalizedFormats(target string, formats []string) map[string]string {
 	return out
 }
 
-func writeJSON(path string, rep report) error {
+func writeJSON(path string, rep any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -636,6 +648,39 @@ func firstNonEmpty(values ...string) string {
 
 func normalizePrompt(value string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+}
+
+func runPublication(promptsetPath, providerName, model string, observe bool, output string) error {
+	if !observe {
+		return fmt.Errorf("scorecard=publication requires --observe; refusing to score the lab pipeline as publication")
+	}
+	set, err := benchmark.LoadPromptSet(promptsetPath)
+	if err != nil {
+		return err
+	}
+	fresh, _, err := publicFreshAnswer(providerName, model, true)
+	if err != nil {
+		return err
+	}
+	score, _, err := benchmark.RunPublication(context.Background(), set, benchmark.Config{
+		Dataset:     promptsetPath,
+		CacheSource: "observed",
+	}, fresh)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(output) != "" {
+		jsonPath := output
+		if strings.EqualFold(filepath.Ext(output), ".html") {
+			jsonPath = strings.TrimSuffix(output, filepath.Ext(output)) + ".json"
+		}
+		if err := writeJSON(jsonPath, score); err != nil {
+			return err
+		}
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(score)
 }
 
 func publicFreshAnswer(providerName string, model string, observe bool) (benchmark.FreshAnswerFunc, string, error) {

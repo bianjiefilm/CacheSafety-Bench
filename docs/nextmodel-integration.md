@@ -91,6 +91,29 @@ go run ./cmd/cachesafetybench run \
   --output reports/observed-report.json
 ```
 
+## Publication scorecard
+
+The NextModel hosted bench page uses a publication scorecard. The Go runner can emit the same object:
+
+```bash
+go run ./cmd/benchmark \
+  -scorecard publication \
+  -observe \
+  -model "$OPENAI_MODEL" \
+  -promptset examples/promptset_v3.json \
+  -decision-log reports/publication-decisions.jsonl
+```
+
+```bash
+go run ./cmd/cachesafetybench run \
+  --scorecard=publication \
+  --observe \
+  --model "$OPENAI_MODEL" \
+  --promptset examples/promptset_v3.json
+```
+
+`-scorecard publication` requires `-observe`. It will not score the local lab pipeline as publication. NextModel remains optional: any gateway that returns the serve-mode headers can be measured. See [metrics.md](metrics.md) for the formula.
+
 ## What observation is not
 
 - It is not a rewrite of the local exact / canonical / semantic pipeline.

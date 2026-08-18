@@ -21,10 +21,12 @@ const (
 const LayerLNBeta Layer = "ln_beta"
 
 type Observation struct {
-	ServeMode   string `json:"serve_mode,omitempty"`
-	RequestID   string `json:"request_id,omitempty"`
-	ReceiptHash string `json:"receipt_hash,omitempty"`
-	ReceiptURL  string `json:"receipt_url,omitempty"`
+	ServeMode    string `json:"serve_mode,omitempty"`
+	RequestID    string `json:"request_id,omitempty"`
+	ReceiptHash  string `json:"receipt_hash,omitempty"`
+	ReceiptURL   string `json:"receipt_url,omitempty"`
+	PromptTokens *int   `json:"prompt_tokens,omitempty"`
+	CachedTokens *int   `json:"cached_tokens,omitempty"`
 }
 
 func ParseGatewayHeaders(headers http.Header) Observation {
